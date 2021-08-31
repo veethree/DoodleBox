@@ -110,11 +110,20 @@ function code_editor.new(x, y, width, height)
 			draw_x = 1,
 			draw_y = 1
         },
+		history = {},
 		console_commands = {},
         config = {
             font = lg.newFont(16),
 
 			console_mode = false,
+
+			console_colors = {
+				normal = {1, 1, 1, 1},
+				info = color(51, 177, 255),
+				warning = color(237, 160, 71),
+				danger = color(230, 76, 76),
+				success = color(129, 219, 90)
+			},
 
 			show_info = true,
 
@@ -192,8 +201,10 @@ function code_editor:run_command(cmd)
 	end
 end
 
-function code_editor:print(t)
+function code_editor:print(t, color)
+	color = color or false
 	if self.config.console_mode then
+		if color then t = "<"..color..">"..t end
 		self:set_line(t, #self.lines)
 		self:insert_line(#self.lines+ 1)
 		self:move_cursor(0, 1)
@@ -266,6 +277,11 @@ function code_editor:update_cursor()
 	end
 end
 
+function code_editor:goto(line)
+	line = tonumber(line)
+	if line < 1 then line = 1 elseif line > #self.lines then line = #self.lines end
+	self:move_cursor(0, line, true)
+end
 
 function code_editor:move_cursor(x, y, set)
 	set = set or false
@@ -275,6 +291,12 @@ function code_editor:move_cursor(x, y, set)
 		y = y or self.cursor.y
 		self.cursor.x = x
 		self.cursor.y = y
+		if self.cursor.y - self.scroll.y < self.visible_lines then
+			self.scroll.y = y
+			if self.scroll.y + self.visible_lines > #self.lines then
+				self.scroll.y = #self.lines - self.visible_lines
+			end
+		end
 	else
 		x = x or 0
 		y = y or 0
@@ -335,7 +357,6 @@ function code_editor:update(dt)
 
 end
 
--- Draws line with syntax highlighting
 function code_editor:draw_line(line)
 	local colored_text = {}
 	if self.config.syntax_highlight then
@@ -352,7 +373,17 @@ function code_editor:draw_line(line)
 			end
 		end
 	else
-		colored_text = self:get_line(line)
+		local raw_line = self:get_line(line)
+		local color, str = raw_line:match("<(%w+)>(.+)")
+		if color then
+			if not has_key(self.config.console_colors, color) then color = "normal" end
+			colored_text = {
+				self.config.console_colors[color],
+				str
+			}
+		else
+			colored_text = self:get_line(line)
+		end
 	end
 
 	line = line - self.scroll.y
@@ -421,14 +452,22 @@ end
 function code_editor:keypressed(key)
 	if key == "backspace" then
 		local line_start, line_end = self:split_line()
-		line_start = sub(line_start, 1, self.cursor.x-2)
-		if self.cursor.x <= 2 then
+		local step = 2
+		if lk.isDown("lctrl") then
+			local line = line_start
+			local last = line:match("(%w+)$")
+			if last then
+				step = len(last) + 1
+			end
+		end
+		line_start = sub(line_start, 1, self.cursor.x-step)
+		if self.cursor.x <= step then
 			line_start = ""
 		end
 
 		self:set_line(line_start..line_end)
 
-		self.cursor.x = self.cursor.x - 1
+		self.cursor.x = self.cursor.x - (step - 1)
 		if self.cursor.x < 1 then 
 			self.cursor.x = 1
 			if self.cursor.y > 1 and not self.config.console_mode then
@@ -469,25 +508,57 @@ function code_editor:keypressed(key)
 		self:insert(self.config.tab)
 		self.cursor.x = self.cursor.x + #self.config.tab
 	elseif key == "left" then
-		if self.cursor.x > 1 then
-			self.cursor.x = self.cursor.x - 1
-		end
-		
-		--snap to start
+		local step = 1
+		local line_start, line_end = self:split_line()
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
-			self.cursor.x = 1
-			self:update_cursor()
-		end
-	elseif key == "right" then
-		self.cursor.x = self.cursor.x + 1
-		if self.cursor.x > #self:get_line() then
-			self.cursor.x = #self:get_line() + 1
+			local line = line_start
+			local last = line:match("(%w+)$")
+			local current = sub(line_start, len(line_start))
+			if current == " " then
+				last = line:match("(%s+)$")
+			else
+				last = line:match("(%w+)$")
+			end
+			if last then
+				step = len(last)
+			end
+			--snap to start
+			if lk.isDown("lshift") or lk.isDown("rshift") then
+				self.cursor.x = 1
+				self:update_cursor()
+			end
 		end
 
-		--snap to end
+		if self.cursor.x > step then
+			self.cursor.x = self.cursor.x - step
+		end
+	
+	elseif key == "right" then
+		local step = 1
+		local line_start, line_end = self:split_line()
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
+			local line = line_end
+			local last = line:match("^(%w+)")
+			local current = sub(line_end, 1, 1)
+			if current == " " then
+				last = line:match("^(%s+)")
+			else
+				last = line:match("^(%w+)")
+			end
+			print(last)
+			if last then
+				step = len(last)
+			end
+			--snap to end
+			if lk.isDown("lshift") or lk.isDown("rshift") then
+				self.cursor.x = #self:get_line() + 1
+				self:update_cursor()
+			end
+		end
+
+		self.cursor.x = self.cursor.x + step
+		if self.cursor.x > #self:get_line() then
 			self.cursor.x = #self:get_line() + 1
-			self:update_cursor()
 		end
 	elseif key == "up" and not self.config.console_mode then
 		self.cursor.y = self.cursor.y - 1
@@ -517,6 +588,11 @@ function code_editor:keypressed(key)
 			if self.scroll.y < 1 then
 				self.scroll.y = 1
 			end
+		elseif lk.isDown("lalt") or lk.isDown("ralt") then
+			local above = self:get_line()
+			local current = self:get_line(self.cursor.y + 1)
+			self:set_line(current)
+			self:set_line(above, self.cursor.y + 1)
 		else
 			--Snap
 			if lk.isDown("lctrl") or lk.isDown("rctrl") then
@@ -553,6 +629,11 @@ function code_editor:keypressed(key)
 			if self.scroll.y > #self.lines - self.visible_lines then
 				self.scroll.y = #self.lines - self.visible_lines
 			end
+		elseif lk.isDown("lalt") or lk.isDown("ralt") then
+			local above = self:get_line()
+			local current = self:get_line(self.cursor.y - 1)
+			self:set_line(current)
+			self:set_line(above, self.cursor.y - 1)
 		else
 			--Snap
 			if lk.isDown("lctrl") or lk.isDown("rctrl") then
@@ -580,9 +661,9 @@ end
 
 function code_editor:textinput(t)
 	self:insert(t)
-
 	self.cursor.x = self.cursor.x + 1
 	self:update_cursor()
 end
+
 
 return code_editor

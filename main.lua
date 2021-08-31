@@ -26,7 +26,8 @@ function love.load()
             title = NAME.." ["..VERSION.."]"
         },
         font_size = 24,
-        project_directory = "Projects"
+        project_directory = "Projects",
+        console_greeting = "Welcome to Doodle Box"
     }
 
     config = default_config

@@ -19,3 +19,18 @@ end
 function get_file_name(file_name)
     return string.match(file_name, ".+%."):sub(1, -2)
 end
+
+function copy(original)
+	local c
+	if type(original) == "table" then
+		c = {}
+		for key, value in pairs(original) do
+			c[copy(key)] = copy(value)
+		end
+		setmetatable(c, copy(getmetatable(original)))
+	else
+		c = original
+	end
+
+	return c
+end
