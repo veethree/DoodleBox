@@ -2,7 +2,7 @@
 A tiny development environment for code doodles made with löve.
 
 ### Features
-* A built keyboard driven code editor with lua syntax highlighting
+* A keyboard driven code editor with lua syntax highlighting
 * A console used for configuration and file management
 * Writing and executing code all in the same window
 * Various shorthands to commonly used functions to making doodling faster
