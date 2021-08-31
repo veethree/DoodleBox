@@ -107,7 +107,6 @@ local function calculate_step_forward(line)
 		last = line:match("^(%w+)")
 	end
 	last = last or " "
-	print(last)
 	return len(last)
 end
 
@@ -156,13 +155,14 @@ function code_editor.new(x, y, width, height)
 			show_info = true,
 			--Color
 			text_color_base = {1, 1, 1, 1},
-			cursor_color = {0, 0.7, 0, 1},
+			cursor_color = color(50, 191, 78),
 			background_color = color(26, 28, 36),
 			info_color = color(232, 118, 118),
 
 			--Line numbers
 			show_line_numbers = true,
 			line_number_color = color(191, 191, 191),
+			line_number_background_color = color(20, 21, 28),
 			line_number_margin = 0,
 
 			x_margin = 12,
@@ -189,7 +189,7 @@ end
 
 -- Init function
 -- file: Path to a text file to load. Files can also be loaded directly with the load_file() method
--- resize: Boolean, If true, Only things that need to be reinitialized for a rezied are reinitialized
+-- resize: Boolean, If true, Only things that need to be reinitialized for a resize are reinitialized
 function code_editor:load(file, resize)
 	self.font_height = self.config.font:getAscent() - self.config.font:getDescent()
 	self.font_width = self.config.font:getWidth("W")
@@ -208,8 +208,9 @@ function code_editor:load(file, resize)
 		self.cursor.y = 1
 		self.scroll.x = 1
 		self.scroll.y = 1
-		self:update_cursor()
 	end
+	self:update_cursor()
+	self:move_cursor()
 end
 
 -- Console mode related methods
@@ -228,7 +229,7 @@ function code_editor:run_command(cmd)
 		table.remove(sp, 1)
 		self.config.console_commands[cmd].func(self, unpack(sp))
 	else
-		self:print(string.format("'%s' is not a recognized command.", cmd))
+		self:print(string.format("'%s' is not a recognized command.", cmd), "danger")
 	end
 end
 
@@ -248,6 +249,16 @@ function code_editor:set_config(con)
 	for k,v in pairs(con) do
 		self.config[k] = v
 	end
+end
+
+function code_editor:get_line_indentation(l)
+	l = l or self.cursor.y
+	local line = self:get_line(l)
+
+	local s, e = line:find("^%s+")
+	e = e or 0
+
+	return math.floor(e / len(self.config.tab))
 end
 
 -- Line editing functions
@@ -298,67 +309,81 @@ function code_editor:update_cursor()
 	self.cursor.draw_y = self.y + self.config.y_margin + (self.cursor.y - self.scroll.y) * self.font_height 
 	self.cursor.draw_x = self.x + ((self.config.x_margin * 2) + self.config.line_number_margin) + (self.cursor.x - 1 - self.scroll.x) * self.font_width
 
-	--Scrolling
-	self.scroll.x = self.cursor.x - self.max_line_width
-	if self.scroll.x < 1 then
-		self.scroll.x = 1
-	end
+	--print(format("x: %d | y: %d", self.cursor.draw_x, self.cursor.draw_y))
+	--print("Cursor updated")
 end
 
 -- Navigation related functions
-
 function code_editor:goto(line)
 	line = tonumber(line)
 	if line < 1 then line = 1 elseif line > #self.lines then line = #self.lines end
 	self:move_cursor(0, line, true)
 end
 
--- Moves the cursor, And handels scrolling
--- Needs to be refactored something fierece. this shit is garbage.
+-- Moves the cursor, And handles scrolling
+-- Also returns the x and y without clamping. which is used for backspace
 function code_editor:move_cursor(x, y, set)
-	set = set or false
-	local current_line = self:get_line()
+	-- Setting default argument values
 	if set then
 		x = x or self.cursor.x
 		y = y or self.cursor.y
-		self.cursor.x = x
-		self.cursor.y = y
-		if self.cursor.y - self.scroll.y < self.visible_lines then
-			self.scroll.y = y
-			if self.scroll.y + self.visible_lines > #self.lines then
-				self.scroll.y = #self.lines - self.visible_lines
-			end
-		end
 	else
 		x = x or 0
 		y = y or 0
-		self.cursor.x = self.cursor.x + x	
-		self.cursor.y = self.cursor.y + y	
 	end
-	--Clamping
-	if self.cursor.x < 1 then
-		self.cursor.x = 1
-	end
-	if current_line then
-		if self.cursor.x > #current_line then
-			self.cursor.x = #current_line + 1
-		end
-	end	
+	set = set or false
+	
+	--Moving the cursor
+	local new_x = self.cursor.x + x
+	local new_y = self.cursor.y + y
 
-	if self.cursor.y < 1 then
-		self.cursor.y = 1
-	elseif self.cursor.y > #self.lines then
-		self.cursor.y = #self.lines
+	if set then
+		new_x = x
+		new_y = y
 	end
 
-	--Scrolling
-	if self.cursor.y < self.scroll.y then
-		self.scroll.y = self.scroll.y - 1
-	elseif self.cursor.y > self.scroll.y + self.visible_lines then
-		self.scroll.y = self.scroll.y + 1
+	-- Storing the new values before clamping
+	local free_x, free_y = new_x, new_y
+
+	--Clamping the cursor
+	if new_y < 1 then
+		new_y = 1
+	elseif new_y > #self.lines then
+		new_y = #self.lines
 	end
+
+	local new_line = self:get_line(new_y)
+
+	if new_x < 1 then
+		new_x = 1
+	elseif new_x > len(new_line) then
+		new_x = len(new_line) + 1
+	end
+
+	-- Fixing x value if it goes off the line
+	if new_x > len(new_line) then
+		new_x = len(new_line) + 1
+	end
+
+	-- Scrolling
+	if new_x > self.max_line_width then
+		self.scroll.x = -(self.max_line_width - new_x)
+	else
+		self.scroll.x = 1
+	end
+
+	if new_y > self.scroll.y + self.visible_lines then
+		self.scroll.y = -(self.visible_lines - new_y)
+	elseif new_y < self.scroll.y then
+		self.scroll.y = new_y
+	end
+
+	--Setting final position
+	self.cursor.x = new_x
+	self.cursor.y = new_y
 
 	self:update_cursor()
+	return free_x, free_y
 end
 
 -- Loads a file & replaces tabs with spaces
@@ -411,20 +436,17 @@ function code_editor:draw_line(line)
 				str
 			}
 		else
-			colored_text = self:get_line(line)
+			colored_text = {self.config.text_color_base, self:get_line(line)}
 		end
 	end
+
+	--colored_text[#colored_text + 1] = self.config.console_colors.danger
+	--colored_text[#colored_text + 1] = "    "..self:get_line_indentation(line)
 
 	line = line - self.scroll.y
 	lg.setStencilTest("greater", 0)
 	lg.setColor(1, 1, 1, 1)
 	lg.print(colored_text, self.x + ((self.config.x_margin * 2) + self.config.line_number_margin) - (self.font_width * (self.scroll.x)), self.y + self.config.y_margin + (self.font_height * (line)))
-
-	--Line numbers
-	if self.config.show_line_numbers then
-		lg.setColor(self.config.line_number_color)
-		lg.print(line + self.scroll.y, self.x + self.config.x_margin, self.y + self.config.y_margin + (self.font_height * (line)))
-	end
 end
 
 function code_editor:draw_info_tab()
@@ -436,6 +458,18 @@ function code_editor:draw_info_tab()
 		lg.printf(str_left, self.x, self.height - self.font_height, self.width, "left")
 		lg.printf(str_center, self.x, self.height - self.font_height, self.width, "center")
 		lg.printf(str_right, self.x, self.height - self.font_height, self.width, "right")
+	end
+end
+
+function code_editor:draw_line_numbers()
+	if self.config.show_line_numbers then
+		lg.setColor(self.config.line_number_background_color)
+		lg.rectangle("fill", self.x, self.y, self.config.x_margin + self.config.line_number_margin, self.height)
+		for i=self.scroll.y, self.scroll.y + self.visible_lines do
+			i = i - self.scroll.y
+			lg.setColor(self.config.line_number_color)
+			lg.print(i + self.scroll.y, self.x + self.config.x_margin, self.y + self.config.y_margin + (self.font_height * (i)))
+		end
 	end
 end
 
@@ -468,6 +502,7 @@ function code_editor:draw()
 		end
 	end
 
+	self:draw_line_numbers()
 	self:draw_info_tab()
 
 	lg.setStencilTest()
@@ -495,15 +530,11 @@ function code_editor:keypressed(key)
 
 		self:set_line(line_start..line_end)
 
-		self.cursor.x = self.cursor.x - (step - 1)
-		if self.cursor.x < 1 then 
-			self.cursor.x = 1
+		local tx = self:move_cursor(-(step - 1))
+		if tx < 1 then 
 			if self.cursor.y > 1 and not self.config.console_mode then
-				self.cursor.y = self.cursor.y - 1
-				if self.cursor.y < self.scroll.y then
-					self.scroll.y = self.scroll.y - 1
-				end
-				self.cursor.x = #self:get_line() + 1
+				self:move_cursor(0, -1)
+				self:move_cursor(len(self:get_line()) + 1, nil, true) -- fixing x
 				self:set_line(self:get_line()..line_end)
 				self:remove_line(self.cursor.y + 1)
 			end
@@ -517,142 +548,74 @@ function code_editor:keypressed(key)
 			if self.cursor.x <= 1 then
 				line_start = ""
 			end
+			local indent = self:get_line_indentation()
+			local suffix = ""
+			for i=1, indent do suffix = suffix..self.config.tab end
 
 			if lk.isDown("lctrl") or lk.isDown("rctrl") then
 				if lk.isDown("lshift") or lk.isDown("lshift") then
-					self:insert_line(self.cursor.y)
+					self:insert_line(self.cursor.y, suffix)
+					self:move_cursor(0, 0)
 				else
-					self:insert_line(self.cursor.y + 1)
+					self:insert_line(self.cursor.y + 1, suffix)
 					self:move_cursor(0, 1)
 				end
 			else
-				self.cursor.x = 1
 				self:set_line(line_start, self.cursor.y)
-				self:insert_line(self.cursor.y + 1, line_end)
+				self:insert_line(self.cursor.y + 1, suffix..line_end)
 				self:move_cursor(0, 1)
+				--self:move_cursor(1, nil, true) --Fixing X
 			end
 		end
 	elseif key == "tab" then
 		self:insert(self.config.tab)
-		self.cursor.x = self.cursor.x + #self.config.tab
+		self:move_cursor(len(self.config.tab))
 	elseif key == "left" then
-		local step = 1
 		local line_start, line_end = self:split_line()
-		if lk.isDown("lctrl") or lk.isDown("rctrl") then
+		local step = 1
+		if lk.isDown("lctrl") then
 			step = calculate_step_back(line_start)
-	
-			--snap to start
-			if lk.isDown("lshift") or lk.isDown("rshift") then
-				self.cursor.x = 1
-				self:update_cursor()
+			if lk.isDown("lshift") then
+				step = len(line_start)
 			end
 		end
-
-		if self.cursor.x > step then
-			self.cursor.x = self.cursor.x - step
+		line_start = sub(line_start, 1, self.cursor.x-step)
+		if self.cursor.x <= step then
+			line_start = ""
 		end
-	
+		self:move_cursor(-step)
 	elseif key == "right" then
-		local step = 1
 		local line_start, line_end = self:split_line()
-		if lk.isDown("lctrl") or lk.isDown("rctrl") then
+		local step = 1
+		if lk.isDown("lctrl") then
 			step = calculate_step_forward(line_end)
-			--snap to end
-			if lk.isDown("lshift") or lk.isDown("rshift") then
-				self.cursor.x = #self:get_line() + 1
-				self:update_cursor()
+			if lk.isDown("lshift") then
+				step = len(line_end)
 			end
 		end
-
-		self.cursor.x = self.cursor.x + step
-		if self.cursor.x > #self:get_line() then
-			self.cursor.x = #self:get_line() + 1
+		line_start = sub(line_start, 1, self.cursor.x-step)
+		if self.cursor.x <= step then
+			line_start = ""
 		end
+		self:move_cursor(step)
 	elseif key == "up" and not self.config.console_mode then
-		self.cursor.y = self.cursor.y - 1
-		if self.cursor.y < 1 then
-			self.cursor.y = 1
-		end
-
-		--Scrolling also
-		if self.cursor.y < self.scroll.y then
-			self.scroll.y = self.scroll.y - 1
-		end
-
-		--Fixing cursor x
-		if self.cursor.x > #self:get_line() then
-			self.cursor.x = #self:get_line() + 1
-		end
-
-		--Scroll
-		if lk.isDown("lshift") or lk.isDown("rshift") then
-			local step = math.floor(self.visible_lines / 2)
-			if lk.isDown("lctrl") or lk.isDown("rctrl") then
-				step = self.visible_lines
-			end
-			self.scroll.y = self.scroll.y - step
-			self.cursor.y = self.scroll.y
-			if self.cursor.y < 1 then self.cursor.y = 1 end
-			if self.scroll.y < 1 then
-				self.scroll.y = 1
-			end
-		elseif lk.isDown("lalt") or lk.isDown("ralt") then
-			local above = self:get_line()
-			local current = self:get_line(self.cursor.y + 1)
-			self:set_line(current)
-			self:set_line(above, self.cursor.y + 1)
-		else
-			--Snap
-			if lk.isDown("lctrl") or lk.isDown("rctrl") then
-				self.scroll.y = 1
-				self.cursor.y = 1
+		local step = 1
+		if lk.isDown("lctrl") then
+			step = math.floor(self.visible_lines / 2)
+			if lk.isDown("lshift") then
+				step = self.cursor.y
 			end
 		end
+		self:move_cursor(0, -step)
 	elseif key == "down" and not self.config.console_mode then
-		
-		self.cursor.y = self.cursor.y + 1
-		if self.cursor.y > #self.lines then
-			self.cursor.y = #self.lines
-		end
-
-		--Scrolling 
-		if self.cursor.y > (self.scroll.y + self.visible_lines) then
-			self.scroll.y = self.scroll.y + 1
-		end
-
-		-- Fixing cursor X
-		if self.cursor.x > #self:get_line() then
-			self.cursor.x = #self:get_line() + 1
-		end
-
-		--Scroll
-		if lk.isDown("lshift") or lk.isDown("rshift") then
-			local step = math.floor(self.visible_lines / 2)
-			if lk.isDown("lctrl") or lk.isDown("rctrl") then
-				step = self.visible_lines
-			end
-			self.scroll.y = self.scroll.y + step
-			self.cursor.y = self.scroll.y
-			if self.cursor.y > #self.lines then self.cursor.y = #self.lines end
-			if self.scroll.y > #self.lines - self.visible_lines then
-				self.scroll.y = #self.lines - self.visible_lines
-			end
-		elseif lk.isDown("lalt") or lk.isDown("ralt") then
-			local above = self:get_line()
-			local current = self:get_line(self.cursor.y - 1)
-			self:set_line(current)
-			self:set_line(above, self.cursor.y - 1)
-		else
-			--Snap
-			if lk.isDown("lctrl") or lk.isDown("rctrl") then
-				if #self.lines > self.visible_lines then
-					self.scroll.y = #self.lines - self.visible_lines
-				end
-				--self.cursor.y = #self.lines
-				self:move_cursor(0, #self.lines, true)
-				self:update_cursor()
+		local step = 1
+		if lk.isDown("lctrl") then
+			step = math.floor(self.visible_lines / 2)
+			if lk.isDown("lshift") then
+				step = #self.lines - self.cursor.y
 			end
 		end
+		self:move_cursor(0, step)
 	elseif key == "d" and not self.config.console_mode then
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
 			self:insert_line(self.cursor.y + 1, self:get_line())
@@ -664,13 +627,11 @@ function code_editor:keypressed(key)
 			self:move_cursor(0, -1)
 		end
 	end
-	self:update_cursor()
 end
 
 function code_editor:textinput(t)
 	self:insert(t)
-	self.cursor.x = self.cursor.x + 1
-	self:update_cursor()
+	self:move_cursor(1, 0)
 end
 
 return code_editor

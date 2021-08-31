@@ -2,6 +2,9 @@ local editor = {}
 
 function editor:load(data)
     if data["refresh"] then
+        if self.code_editor.config.font ~= font.regular then
+            self.code_editor:set_config({font = font.regular})
+        end
         self.code_editor:resize(lg.getWidth(), lg.getHeight())
     else
         self.code_editor = code_editor.new(0, 0, lg.getWidth(), lg.getHeight())

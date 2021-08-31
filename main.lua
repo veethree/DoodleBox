@@ -5,6 +5,7 @@ VERSION = 0.1
 lg = love.graphics
 fs = love.filesystem
 lk = love.keyboard
+format = string.format
 
 function love.load()
     -- Loaidng classes
@@ -26,6 +27,7 @@ function love.load()
             title = NAME.." ["..VERSION.."]"
         },
         font_size = 24,
+        font_file = "src/font/monogram.ttf",
         project_directory = "Projects",
         console_greeting = "Welcome to Doodle Box"
     }
@@ -55,10 +57,16 @@ function love.load()
 
     --Loading fonts
     font = {
-        regular = lg.newFont("src/font/monogram.ttf", config.font_size)
+        regular = lg.newFont(config.font_file, config.font_size)
     }
 
     state:load("console")
+end
+
+function toggle_fullscreen(enable)
+    config.window.fullscreen = enable
+    love.window.setMode(config.window.width, config.window.height, {fullscreen=config.window.fullscreen, resizable = config.window.resizable})
+    save_config()
 end
 
 function save_config()

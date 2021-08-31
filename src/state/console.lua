@@ -1,7 +1,5 @@
 local console = {}
 
--- Turns variable arguments into a string.
--- Used for console commands, Probably should be a part of code_editor.lua
 local function arg_to_str(...)
     local s = ""
     for i,v in ipairs({...}) do
@@ -39,7 +37,6 @@ function console:define_commands()
         if ... then
             local name = arg_to_str(...)
             local fixed_name = name:gsub(" ", "_")
-            print(fixed_name)
 
             if fs.getInfo(config.project_directory.."/"..name) then
                 c:print(string.format("Project with the name '%s' already exists!", name), "danger")
@@ -62,6 +59,27 @@ function console:define_commands()
         end
     end
     self.code_editor:register_command("new", new, "Creates a new project")
+
+    -- RENAME
+    local function rename(c, ...)
+        if ... then
+            if self.loaded_project then
+                local name = arg_to_str(...)
+                local path = love.filesystem.getSaveDirectory()
+                local ok, err = os.rename(path.."/"..config.project_directory.."/"..self.loaded_project, path.."/"..config.project_directory.."/"..name)
+                if ok then
+                    c:print(string.format("Renamed '%s' to '%s'", self.loaded_project, name), "success")
+                else
+                    c:print(string.format("Error: %s", err), "danger")
+                end
+            else
+                c:print("You can only rename loaded projects!", "danger")
+            end
+        else
+            c:print("Usage: rename [new_name]", "info")
+        end
+    end
+    self.code_editor:register_command("rename", rename, "Renames a project")
 
     -- LOAD
     local function load(c, ...)
@@ -153,6 +171,7 @@ function console:define_commands()
     end
     self.code_editor:register_command("op", op, "Opens the current projects directory in your OS.")
 
+    -- LSCONFIG
     local function lsconfig(c)
         c:print("Config:")
         for k,v in pairs(config) do
@@ -187,6 +206,45 @@ function console:define_commands()
         end
     end
     self.code_editor:register_command("l", goto, "goes to a specific line")
+
+    --FONT
+    local function fontsize(c, size)
+        if size then
+            if tonumber(size) then
+                config.font_size = tonumber(size)
+                font.regular = lg.newFont(config.font_file, config.font_size)
+                c:set_config({font = font.regular})
+                c:load(nil, true)
+                save_config()
+                c:print(format("Font size set to '%d'", size), "success")
+            else
+                c:print(format("'%s' is not a valid font size", size))
+            end
+        else
+            c:print("Usage: fontsize [font size]")
+        end
+    end
+    self.code_editor:register_command("font", fontsize, "Changes the font size")
+
+    local function fullscreen(c, enable)
+        if enable then
+            if enable == "true" or enable == "false" then
+                local msg = "enabled"
+                if enable == "true" then
+                    toggle_fullscreen(true)
+                else
+                    toggle_fullscreen(false)
+                    msg = "disabled"
+                end
+                c:print(format("Fullscreen mode %s", msg), "success")
+            else
+                c:print("Usage: fs [true/false]")
+            end
+        else
+            c:print("Usage: fs [true/false]")
+        end
+    end
+    self.code_editor:register_command("fs", fullscreen, "Toggles fullscreen mode")
 
 end
 
