@@ -1,19 +1,23 @@
-function load()
+local project_name = {}
+
+function project_name:load()
 
 end
 
-function update(dt)
+function project_name:update(dt)
 
 end
 
-function draw()
+function project_name:draw()
 
 end
 
-function keypressed(key)
+function project_name:keypressed(key)
 
 end
 
-function mousepressed(x, y, key)
+function project_name:mousepressed(x, y, key)
 
 end
+
+return project_name

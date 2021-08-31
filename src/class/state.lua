@@ -1,7 +1,8 @@
 -- A bare bones state system
 local state = {
     state = false,
-    state_list = {}
+    state_list = {},
+    saved_state = {}
 }
 
 -- state_module: Path to a state module file
@@ -13,15 +14,33 @@ end
 -- state: state name as defined with define_state
 -- data: Anything you want to pass to the state in the states load function
 function state:load(state_name, data)
+    data = data or {}
     if self.state_list[state_name] then
-        self.state = fs.load(self.state_list[state_name])()
-        if type(self.state.load) == "function" then
-            self.state:load(data)
+        if self.saved_state[state_name] then
+            self.state = self.saved_state[state_name]
+            self.state:load({refresh = true})
+        else
+            self.state = fs.load(self.state_list[state_name])()
+            self.state.name = state_name
+            if type(self.state.load) == "function" then
+                self.state:load(data)
+            end
         end
     else
         error(string.format("STATE: State '%s' does not exist!", state_name))
     end
 end 
+
+function state:save()
+    self.saved_state[self.state.name] = self.state
+end
+
+function state:clear(state_name)
+    state_name = state_name or self.state.name
+    if self.saved_state[state_name] then
+        self.saved_state[state_name] = nil
+    end
+end
 
 function state:get_state()
     return self.state
@@ -37,6 +56,12 @@ end
 function state:draw()
     if type(self.state.draw) == "function" then
         self.state:draw()
+    end
+end
+
+function state:resize(w, h)
+    if type(self.state.resize) == "function" then
+        self.state:resize(w, h)
     end
 end
 

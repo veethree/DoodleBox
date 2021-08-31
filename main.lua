@@ -13,7 +13,8 @@ function love.load()
 
     -- Defining states
     state:define_state("src/state/console.lua", "console")
-    state:define_state("src/state/menu.lua", "menu")
+    state:define_state("src/state/editor.lua", "editor")
+    state:define_state("src/state/run.lua", "run")
 
     --Config
     default_config = {
@@ -21,8 +22,10 @@ function love.load()
             width = 1024,
             height = 576,
             fullscreen = false,
+            resizable = true,
             title = NAME.." ["..VERSION.."]"
         },
+        font_size = 24,
         project_directory = "Projects"
     }
 
@@ -39,7 +42,7 @@ function love.load()
     end
 
     -- Creating window
-    love.window.setMode(config.window.width, config.window.height, {fullscreen=config.window.fullscreen})
+    love.window.setMode(config.window.width, config.window.height, {fullscreen=config.window.fullscreen, resizable = config.window.resizable})
     love.window.setTitle(config.window.title)
 
     --Scaling
@@ -51,7 +54,7 @@ function love.load()
 
     --Loading fonts
     font = {
-        regular = lg.newFont("src/font/monogram.ttf", 24 * scale_x)
+        regular = lg.newFont("src/font/monogram.ttf", config.font_size)
     }
 
     state:load("console")
@@ -74,13 +77,16 @@ function love.draw()
     state:draw()
 end
 
+function love.resize(w, h)
+    state:resize(w, h)
+    config.window.width = w
+    config.window.height = h
+    save_config()
+end
+
 function love.keypressed(key)
     if key == "escape" then
-        love.event.push("quit")
-    elseif key == "s" then
-        if lk.isDown("lctrl") then
-            love.system.openURL("file://"..love.filesystem.getSaveDirectory())
-        end
+        if lk.isDown("lshift") then love.event.push("quit") end
     end
     state:keypressed(key)
 end

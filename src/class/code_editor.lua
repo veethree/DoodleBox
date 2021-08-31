@@ -151,11 +151,7 @@ function code_editor.new(x, y, width, height)
 end
 
 -- Init function, Can also load a file if one is provided.
-function code_editor:load(file)
-	file = file or false
-	if file then
-		self:load_file(file)
-	end
+function code_editor:load(file, resize)
 	self.font_height = self.config.font:getAscent() - self.config.font:getDescent()
 	self.font_width = self.config.font:getWidth("W")
 	self.visible_lines = math.floor((self.height - (self.config.y_margin * 2) - self.font_height) / self.font_height) - 1
@@ -163,11 +159,18 @@ function code_editor:load(file)
 	if self.config.show_line_numbers then
 		self.config.line_number_margin = self.font_width * 4
 	end
-	self.cursor.x = 1
-	self.cursor.y = 1
-	self.scroll.x = 1
-	self.scroll.y = 1
-	self:update_cursor()
+	if not resize then
+		file = file or false
+		resize = resize or false
+		if file then
+			self:load_file(file)
+		end
+		self.cursor.x = 1
+		self.cursor.y = 1
+		self.scroll.x = 1
+		self.scroll.y = 1
+		self:update_cursor()
+	end
 end
 
 function code_editor:register_command(cmd, func, description)
@@ -263,6 +266,7 @@ function code_editor:update_cursor()
 	end
 end
 
+
 function code_editor:move_cursor(x, y, set)
 	set = set or false
 	local current_line = self:get_line()
@@ -316,14 +320,25 @@ function code_editor:load_file(file)
 	end
 end
 
+function code_editor:save_file(file)
+	local data = ""
+	for i,v in ipairs(self.lines) do
+		data = data..v
+		if i < #self.lines then
+			data = data.."\n"
+		end
+	end
+	fs.write(file, data)
+end
+
 function code_editor:update(dt)
 
 end
 
 -- Draws line with syntax highlighting
 function code_editor:draw_line(line)
+	local colored_text = {}
 	if self.config.syntax_highlight then
-		local colored_text = {}
 		local l = lexer(self:get_line(line))
 		for i,v in ipairs(l) do
 			for o,j in ipairs(v) do
@@ -397,6 +412,11 @@ function code_editor:draw()
 	lg.setFont(of)
 end 
 
+function code_editor:resize(w, h)
+    self.width = w
+	self.height = h
+	self:load(false, true)
+end
 
 function code_editor:keypressed(key)
 	if key == "backspace" then
