@@ -1,5 +1,7 @@
 local console = {}
 
+-- Turns variable arguments into a string.
+-- Used for console commands, Probably should be a part of code_editor.lua
 local function arg_to_str(...)
     local s = ""
     for i,v in ipairs({...}) do
@@ -12,7 +14,7 @@ function console:define_commands()
     -- HELP
     local function help(c)
         c:print("Available commands:", "normal")
-        for k,v in pairs(c.console_commands) do
+        for k,v in pairs(c.config.console_commands) do
             c:print(string.format("%s - %s", k, v.description), "info")
         end
     end

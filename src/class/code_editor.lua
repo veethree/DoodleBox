@@ -85,6 +85,32 @@ local function split(str)
 	return res
 end
 
+-- Calculates the step the cursor should take to step by word
+local function calculate_step_back(line)
+	local last = ""
+	local current = sub(line, len(line))
+	if current == " " then
+		last = line:match("(%s+)$")
+	else
+		last = line:match("(%w+)$")
+	end
+	last = last or " "
+	return len(last)
+end
+-- Calculates the step the cursor should take to step by word
+local function calculate_step_forward(line)
+	local last = ""
+	local current = sub(line, 1, 1)
+	if current == " " then
+		last = line:match("^(%s+)")
+	else
+		last = line:match("^(%w+)")
+	end
+	last = last or " "
+	print(last)
+	return len(last)
+end
+
 --LÖVE SETUP
 local lg = love.graphics
 local fs = love.filesystem
@@ -100,6 +126,7 @@ function code_editor.new(x, y, width, height)
 		
         lines = {""},
 		file = "None",
+
 		scroll = {
 			x = 1,
 			y = 1
@@ -110,13 +137,12 @@ function code_editor.new(x, y, width, height)
 			draw_x = 1,
 			draw_y = 1
         },
-		history = {},
-		console_commands = {},
+		
         config = {
-            font = lg.newFont(16),
-
+			-- CONSOLE MODE
 			console_mode = false,
-
+			console_history = {},
+			console_commands = {},
 			console_colors = {
 				normal = {1, 1, 1, 1},
 				info = color(51, 177, 255),
@@ -124,15 +150,17 @@ function code_editor.new(x, y, width, height)
 				danger = color(230, 76, 76),
 				success = color(129, 219, 90)
 			},
-
+			
+			--Look
+			font = lg.newFont(16),
 			show_info = true,
-
+			--Color
 			text_color_base = {1, 1, 1, 1},
 			cursor_color = {0, 0.7, 0, 1},
 			background_color = color(26, 28, 36),
-
 			info_color = color(232, 118, 118),
 
+			--Line numbers
 			show_line_numbers = true,
 			line_number_color = color(191, 191, 191),
 			line_number_margin = 0,
@@ -143,7 +171,7 @@ function code_editor.new(x, y, width, height)
 			tab = "    ",
 
 			syntax_highlight = true,
-			syntax = {
+			syntax_colors = {
 				number = color(230, 76, 76),
 				value = color(180, 77, 240),
 				keyword = color(51, 177, 255),
@@ -159,7 +187,9 @@ function code_editor.new(x, y, width, height)
     return setmetatable(ce, code_editor_meta)
 end
 
--- Init function, Can also load a file if one is provided.
+-- Init function
+-- file: Path to a text file to load. Files can also be loaded directly with the load_file() method
+-- resize: Boolean, If true, Only things that need to be reinitialized for a rezied are reinitialized
 function code_editor:load(file, resize)
 	self.font_height = self.config.font:getAscent() - self.config.font:getDescent()
 	self.font_width = self.config.font:getWidth("W")
@@ -182,9 +212,10 @@ function code_editor:load(file, resize)
 	end
 end
 
+-- Console mode related methods
 function code_editor:register_command(cmd, func, description)
 	description = description or "No description"
-	self.console_commands[cmd] = {
+	self.config.console_commands[cmd] = {
 		func = func,
 		description = description
 	}
@@ -193,9 +224,9 @@ end
 function code_editor:run_command(cmd)
 	local sp = split(cmd)
 	cmd = sp[1]
-	if has_key(self.console_commands, cmd) then
+	if has_key(self.config.console_commands, cmd) then
 		table.remove(sp, 1)
-		self.console_commands[cmd].func(self, unpack(sp))
+		self.config.console_commands[cmd].func(self, unpack(sp))
 	else
 		self:print(string.format("'%s' is not a recognized command.", cmd))
 	end
@@ -212,17 +243,14 @@ function code_editor:print(t, color)
 	end
 end
 
-function code_editor:set_font(font)
-    self.config.font = font
-	self:load()
-end
-
+-- con: A table containing a config item to be changed {show_line_numbers = false}
 function code_editor:set_config(con)
 	for k,v in pairs(con) do
 		self.config[k] = v
 	end
 end
 
+-- Line editing functions
 function code_editor:get_line(line)
 	line = line or self.cursor.y
 	if line < 1 then line = 1 end
@@ -277,12 +305,16 @@ function code_editor:update_cursor()
 	end
 end
 
+-- Navigation related functions
+
 function code_editor:goto(line)
 	line = tonumber(line)
 	if line < 1 then line = 1 elseif line > #self.lines then line = #self.lines end
 	self:move_cursor(0, line, true)
 end
 
+-- Moves the cursor, And handels scrolling
+-- Needs to be refactored something fierece. this shit is garbage.
 function code_editor:move_cursor(x, y, set)
 	set = set or false
 	local current_line = self:get_line()
@@ -353,10 +385,7 @@ function code_editor:save_file(file)
 	fs.write(file, data)
 end
 
-function code_editor:update(dt)
-
-end
-
+-- Renders a line with syntax highlighting or colors depending on console_mode
 function code_editor:draw_line(line)
 	local colored_text = {}
 	if self.config.syntax_highlight then
@@ -364,8 +393,8 @@ function code_editor:draw_line(line)
 		for i,v in ipairs(l) do
 			for o,j in ipairs(v) do
 				local color = self.config.text_color_base
-				if has_key(self.config.syntax, j.type) then
-					color = self.config.syntax[j.type]
+				if has_key(self.config.syntax_colors, j.type) then
+					color = self.config.syntax_colors[j.type]
 				end
 			
 				colored_text[#colored_text + 1] = color
@@ -398,6 +427,18 @@ function code_editor:draw_line(line)
 	end
 end
 
+function code_editor:draw_info_tab()
+	if self.config.show_info then
+		lg.setColor(self.config.info_color)
+		local str_left = string.format("%d/%d", self.cursor.y, #self.lines)
+		local str_center = string.format("'%s'", self.file)
+		local str_right = string.format("[%dx%d] [%dx%d]", self.cursor.x, self.cursor.y, self.scroll.x, self.scroll.y)
+		lg.printf(str_left, self.x, self.height - self.font_height, self.width, "left")
+		lg.printf(str_center, self.x, self.height - self.font_height, self.width, "center")
+		lg.printf(str_right, self.x, self.height - self.font_height, self.width, "right")
+	end
+end
+
 function code_editor:draw()
 	local of = lg.getFont()
 	local r, g, b, a = lg.getColor()
@@ -427,16 +468,7 @@ function code_editor:draw()
 		end
 	end
 
-	-- Info tab
-	if self.config.show_info then
-		lg.setColor(self.config.info_color)
-		local str_left = string.format("%d/%d", self.cursor.y, #self.lines)
-		local str_center = string.format("'%s'", self.file)
-		local str_right = string.format("[%dx%d] [%dx%d]", self.cursor.x, self.cursor.y, self.scroll.x, self.scroll.y)
-		lg.printf(str_left, self.x, self.height - self.font_height, self.width, "left")
-		lg.printf(str_center, self.x, self.height - self.font_height, self.width, "center")
-		lg.printf(str_right, self.x, self.height - self.font_height, self.width, "right")
-	end
+	self:draw_info_tab()
 
 	lg.setStencilTest()
 	lg.setColor(r, g, b, a)
@@ -454,11 +486,7 @@ function code_editor:keypressed(key)
 		local line_start, line_end = self:split_line()
 		local step = 2
 		if lk.isDown("lctrl") then
-			local line = line_start
-			local last = line:match("(%w+)$")
-			if last then
-				step = len(last) + 1
-			end
+			step = calculate_step_back(line_start) + 1
 		end
 		line_start = sub(line_start, 1, self.cursor.x-step)
 		if self.cursor.x <= step then
@@ -511,17 +539,8 @@ function code_editor:keypressed(key)
 		local step = 1
 		local line_start, line_end = self:split_line()
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
-			local line = line_start
-			local last = line:match("(%w+)$")
-			local current = sub(line_start, len(line_start))
-			if current == " " then
-				last = line:match("(%s+)$")
-			else
-				last = line:match("(%w+)$")
-			end
-			if last then
-				step = len(last)
-			end
+			step = calculate_step_back(line_start)
+	
 			--snap to start
 			if lk.isDown("lshift") or lk.isDown("rshift") then
 				self.cursor.x = 1
@@ -537,18 +556,7 @@ function code_editor:keypressed(key)
 		local step = 1
 		local line_start, line_end = self:split_line()
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
-			local line = line_end
-			local last = line:match("^(%w+)")
-			local current = sub(line_end, 1, 1)
-			if current == " " then
-				last = line:match("^(%s+)")
-			else
-				last = line:match("^(%w+)")
-			end
-			print(last)
-			if last then
-				step = len(last)
-			end
+			step = calculate_step_forward(line_end)
 			--snap to end
 			if lk.isDown("lshift") or lk.isDown("rshift") then
 				self.cursor.x = #self:get_line() + 1
@@ -664,6 +672,5 @@ function code_editor:textinput(t)
 	self.cursor.x = self.cursor.x + 1
 	self:update_cursor()
 end
-
 
 return code_editor

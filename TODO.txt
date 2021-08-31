@@ -1,0 +1,3 @@
+TODO List.
+- Refactor move_corsor function
+- Move arg_to_str into code_editor
