@@ -85,6 +85,10 @@ local function split(str)
 	return res
 end
 
+function code_editor:detab(str)
+	return string.gsub(str, "\t", self.config.tab)
+end
+
 -- Calculates the step the cursor should take to step by word
 local function calculate_step_back(line)
 	local last = ""
@@ -392,7 +396,7 @@ function code_editor:load_file(file)
 		self.file = file
 		for line in fs.lines(file) do
 			-- Replacing tabs with spaces cause fuck tabs
-			fixed_line = string.gsub(line, "\t", self.config.tab)
+			fixed_line = self:detab(line)
 			self:insert_line(#self.lines, fixed_line)
 		end
 		self:remove_line(#self.lines)
@@ -455,9 +459,9 @@ function code_editor:draw_info_tab()
 		local str_left = string.format("%d/%d", self.cursor.y, #self.lines)
 		local str_center = string.format("'%s'", self.file)
 		local str_right = string.format("[%dx%d] [%dx%d]", self.cursor.x, self.cursor.y, self.scroll.x, self.scroll.y)
-		lg.printf(str_left, self.x, self.height - self.font_height, self.width, "left")
+		lg.printf(str_left, self.x + self.config.x_margin, self.height - self.font_height, self.width, "left")
 		lg.printf(str_center, self.x, self.height - self.font_height, self.width, "center")
-		lg.printf(str_right, self.x, self.height - self.font_height, self.width, "right")
+		lg.printf(str_right, self.x - self.config.x_margin, self.height - self.font_height, self.width, "right")
 	end
 end
 
@@ -605,6 +609,11 @@ function code_editor:keypressed(key)
 			if lk.isDown("lshift") then
 				step = self.cursor.y
 			end
+		elseif lk.isDown("lalt") then
+			local current = self:get_line()
+			local above = self:get_line(self.cursor.y - 1)
+			self:set_line(above)
+			self:set_line(current, self.cursor.y - 1)
 		end
 		self:move_cursor(0, -step)
 	elseif key == "down" and not self.config.console_mode then
@@ -613,6 +622,13 @@ function code_editor:keypressed(key)
 			step = math.floor(self.visible_lines / 2)
 			if lk.isDown("lshift") then
 				step = #self.lines - self.cursor.y
+			end
+		elseif lk.isDown("lalt") then
+			if self.cursor.y < #self.lines then
+				local current = self:get_line()
+				local above = self:get_line(self.cursor.y + 1)
+				self:set_line(above)
+				self:set_line(current, self.cursor.y + 1)
 			end
 		end
 		self:move_cursor(0, step)
@@ -623,8 +639,23 @@ function code_editor:keypressed(key)
 		end
 	elseif key == "x" and not self.config.console_mode then
 		if lk.isDown("lctrl") or lk.isDown("rctrl") then
+			ls.setClipboardText(self:get_line())
 			self:remove_line(self.cursor.y)
-			self:move_cursor(0, -1)
+		end
+	elseif key == "c" then
+		if lk.isDown("lctrl")  and not self.config.console_mode then
+			ls.setClipboardText(self:get_line())
+		end
+	elseif key == "v" then
+		if lk.isDown("lctrl") and not self.config.console_mode then
+			local s = ls:getClipboardText()
+			local tab = {}
+			for line in s:gmatch("[^\r\n]+") do
+				tab[#tab + 1] = self:detab(line)
+			end
+			for i=#tab, 1, -1 do
+				self:insert_line(self.cursor.y, tab[i])
+			end
 		end
 	end
 end

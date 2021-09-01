@@ -5,6 +5,7 @@ VERSION = 0.1
 lg = love.graphics
 fs = love.filesystem
 lk = love.keyboard
+ls = love.system
 format = string.format
 
 function love.load()
@@ -51,9 +52,6 @@ function love.load()
     --Scaling
     scale_x = lg.getWidth() * 0.001
     scale_y = lg.getHeight() * 0.001
-
-    print(scale_x)
-    print(scale_y)
 
     --Loading fonts
     font = {
