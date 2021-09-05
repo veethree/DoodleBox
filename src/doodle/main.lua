@@ -1,6 +1,6 @@
 local project_name = {}
 
-function project_name:load()
+function project_name:load(config)
 
 end
 

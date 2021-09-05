@@ -7,6 +7,14 @@ function update_globals()
     mouseX, mouseY = love.mouse.getPosition()
 end
 
+function dist(x1,y1, x2,y2)
+    return ((x2-x1)^2+(y2-y1)^2)^0.5 
+end
+
+function angle(x1,y1, x2,y2)
+    return math.atan2(y2-y1, x2-x1)
+end
+
 --Shorthands
 function color(r, g, b, a)
     if not g then

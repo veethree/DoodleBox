@@ -1,4 +1,6 @@
-local run = {}
+local run = {
+    clear_canvas = true
+}
 
 function run:run_function(func, ...)
     local status, err = pcall(func, ...)
@@ -19,7 +21,8 @@ function run:load(data)
             self.program = err()
             if type(self.program.load) == "function" then
                 local function f(dt)
-                    state:get_state().program:load()
+                    state:get_state().program:load(self)
+                    self.canvas = lg.newCanvas()
                 end
                 self:run_function(f, dt)
             end
@@ -48,8 +51,13 @@ function run:draw()
         local function f()
             state:get_state().program:draw()
         end
+        lg.setCanvas(self.canvas)
+        if self.clear_canvas then lg.clear() end
         self:run_function(f, dt)
+        lg.setCanvas()
     end
+    lg.setColor(1, 1, 1, 1)
+    lg.draw(self.canvas)
 end
 
 function run:keypressed(key)

@@ -114,6 +114,18 @@ local function calculate_step_forward(line)
 	return len(last)
 end
 
+-- Converts the lines table to a string
+function code_editor:lines_to_string()
+	local data = ""
+	for i,v in ipairs(self.lines) do
+		data = data..v
+		if i < #self.lines then
+			data = data.."\n"
+		end
+	end
+	return data
+end
+
 --LÖVE SETUP
 local lg = love.graphics
 local fs = love.filesystem
@@ -142,6 +154,9 @@ function code_editor.new(x, y, width, height)
         },
 		
         config = {
+			-- Behaviour
+			remove_trailing_whitespace = true,
+
 			-- CONSOLE MODE
 			console_mode = false,
 			console_history = {},
@@ -156,12 +171,16 @@ function code_editor.new(x, y, width, height)
 			
 			--Look
 			font = lg.newFont(16),
-			show_info = true,
 			--Color
 			text_color_base = {1, 1, 1, 1},
 			cursor_color = color(50, 191, 78),
 			background_color = color(26, 28, 36),
-			info_color = color(232, 118, 118),
+			line_comment_color = color(40, 44, 56),
+
+			--Info tab
+			show_info = true,
+			info_color = color(26, 28, 36),
+			info_background_color = color(191, 191, 191),
 
 			--Line numbers
 			show_line_numbers = true,
@@ -263,6 +282,51 @@ function code_editor:get_line_indentation(l)
 	e = e or 0
 
 	return math.floor(e / len(self.config.tab))
+end
+
+function code_editor:get_line_trailing_whitespace(l)
+	l = l or self.cursor.y
+	local line = self:get_line(l)
+	local res = 0
+	--Checks if line isn't just whitespace
+	if line:find("[%w%p]+") then
+		local ws = line:match("%s+$")
+		ws = ws or ""
+		res = #ws
+	end
+
+	return res
+end
+
+function code_editor:check_syntax()
+	local _errline = false
+	local function handler(raw_error)
+		local body = ""
+		-- finding error line number
+		local lines = {}
+		for ln in raw_error:gmatch("(:%d+:)") do
+			lines[#lines + 1] = ln:sub(2, -2)
+		end
+		if #lines > 1 then 
+			_errline = lines[2] 
+			-- Finding error body
+			local s, e = raw_error:find(format(":%d:", _errline))
+			body = raw_error:sub(e+1)
+		end
+
+		return body
+	end
+
+	local function f()
+		assert(loadstring(self:lines_to_string()))
+	end
+	local status, err = xpcall(f, handler)
+	local error_msg = false
+	if not status then 
+		error_msg = format("[%d] SYNTAX ERROR: %s", _errline, err)
+	end
+
+	return error_msg, tonumber(_errline)
 end
 
 -- Line editing functions
@@ -386,6 +450,14 @@ function code_editor:move_cursor(x, y, set)
 	self.cursor.x = new_x
 	self.cursor.y = new_y
 
+	if self.config.remove_trailing_whitespace then
+		for i,v in ipairs(self.lines) do
+			if i ~= new_y then
+				self.lines[i] = v:sub(1, len(v) - self:get_line_trailing_whitespace(i))
+			end
+		end
+	end
+
 	self:update_cursor()
 	return free_x, free_y
 end
@@ -404,13 +476,7 @@ function code_editor:load_file(file)
 end
 
 function code_editor:save_file(file)
-	local data = ""
-	for i,v in ipairs(self.lines) do
-		data = data..v
-		if i < #self.lines then
-			data = data.."\n"
-		end
-	end
+	local data = self:lines_to_string()
 	fs.write(file, data)
 end
 
@@ -444,8 +510,10 @@ function code_editor:draw_line(line)
 		end
 	end
 
-	--colored_text[#colored_text + 1] = self.config.console_colors.danger
-	--colored_text[#colored_text + 1] = "    "..self:get_line_indentation(line)
+	-- if tonumber(_errline) == line then
+	-- 	colored_text[#colored_text + 1] = self.config.console_colors.danger
+	-- 	colored_text[#colored_text + 1] = self.config.tab..comment
+	-- end
 
 	line = line - self.scroll.y
 	lg.setStencilTest("greater", 0)
@@ -455,10 +523,20 @@ end
 
 function code_editor:draw_info_tab()
 	if self.config.show_info then
+		local err = self:check_syntax()
+		lg.setColor(self.config.info_background_color)
+		if err then
+			lg.setColor(self.config.console_colors.danger)
+		end
+		lg.rectangle("fill", self.x, self.y + self.height - self.font_height, self.width, self.font_height)
 		lg.setColor(self.config.info_color)
+
 		local str_left = string.format("%d/%d", self.cursor.y, #self.lines)
 		local str_center = string.format("'%s'", self.file)
 		local str_right = string.format("[%dx%d] [%dx%d]", self.cursor.x, self.cursor.y, self.scroll.x, self.scroll.y)
+		if err then
+			str_center = err
+		end
 		lg.printf(str_left, self.x + self.config.x_margin, self.height - self.font_height, self.width, "left")
 		lg.printf(str_center, self.x, self.height - self.font_height, self.width, "center")
 		lg.printf(str_right, self.x - self.config.x_margin, self.height - self.font_height, self.width, "right")
@@ -467,11 +545,17 @@ end
 
 function code_editor:draw_line_numbers()
 	if self.config.show_line_numbers then
+		local _, line = self:check_syntax()
 		lg.setColor(self.config.line_number_background_color)
 		lg.rectangle("fill", self.x, self.y, self.config.x_margin + self.config.line_number_margin, self.height)
 		for i=self.scroll.y, self.scroll.y + self.visible_lines do
 			i = i - self.scroll.y
 			lg.setColor(self.config.line_number_color)
+			if line then
+				if line == i + self.scroll.y then
+					lg.setColor(self.config.console_colors.danger)
+				end
+			end
 			lg.print(i + self.scroll.y, self.x + self.config.x_margin, self.y + self.config.y_margin + (self.font_height * (i)))
 		end
 	end
