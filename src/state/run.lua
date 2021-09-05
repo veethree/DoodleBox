@@ -15,6 +15,7 @@ function run.err(msg)
 end
 
 function run:load(data)
+    update_globals()
     if data["file"] then
         local status, err = pcall(fs.load, data["file"])
         if status then

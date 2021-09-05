@@ -1,10 +1,3 @@
-s = "function foo()"
-function fun()
-    assert(loadstring(s))
-end
-s, a = pcall(fun)
-print(s, a)
-
 
 NAME = "Doodle Box"
 VERSION = 0.1

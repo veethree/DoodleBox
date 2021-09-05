@@ -198,7 +198,9 @@ function code_editor.new(x, y, width, height)
 				number = color(230, 76, 76),
 				value = color(180, 77, 240),
 				keyword = color(51, 177, 255),
-				string = color(237, 160, 71),
+				string = color(255, 38, 139),
+				string_start = color(255, 38, 139),
+				string_end = color(255, 38, 139),
 				symbol = color(129, 219, 90),
 				comment = color(120, 120, 120),
 				ident = color(239, 239, 239),
@@ -433,6 +435,22 @@ function code_editor:move_cursor(x, y, set)
 		new_x = len(new_line) + 1
 	end
 
+	-- Fixing x value if there's leading white space
+	if y ~= 0 then
+		if len(new_line) > 0  then
+			-- White space
+			if not new_line:find("[%w%p]+") then
+				new_x = len(new_line) + 1
+			elseif self:get_line_indentation(new_y) > 0 then
+				local indent = len(self.config.tab) * self:get_line_indentation(new_y) + 1
+				if new_x < indent 
+				then
+					new_x = indent
+				end
+			end
+		end
+	end
+
 	-- Scrolling
 	if new_x > self.max_line_width then
 		self.scroll.x = -(self.max_line_width - new_x)
@@ -510,10 +528,8 @@ function code_editor:draw_line(line)
 		end
 	end
 
-	-- if tonumber(_errline) == line then
-	-- 	colored_text[#colored_text + 1] = self.config.console_colors.danger
-	-- 	colored_text[#colored_text + 1] = self.config.tab..comment
-	-- end
+	colored_text[#colored_text + 1] = self.config.line_comment_color
+	colored_text[#colored_text + 1] = " *"
 
 	line = line - self.scroll.y
 	lg.setStencilTest("greater", 0)
@@ -652,7 +668,7 @@ function code_editor:keypressed(key)
 				self:set_line(line_start, self.cursor.y)
 				self:insert_line(self.cursor.y + 1, suffix..line_end)
 				self:move_cursor(0, 1)
-				--self:move_cursor(1, nil, true) --Fixing X
+				self:move_cursor(1, nil, true) --Fixing X
 			end
 		end
 	elseif key == "tab" then
